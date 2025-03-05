@@ -34,7 +34,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   positioned_tap_detector_2: ^1.0.4
   # State management
-  provider: ^6.0.3
+  provider: ^6.0.0
 
   # Location and mapping
   geolocator: ^13.0.2
@@ -100,3 +100,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
+
