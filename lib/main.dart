@@ -9,12 +9,47 @@ import 'screens/settings_screen.dart';
 import 'providers/run_provider.dart';
 import 'providers/settings_provider.dart';
 
-void main() {
-  runApp(const RunningApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    runApp(const RunningApp());
+  } catch (e) {
+    print('Error initializing app: $e');
+    // You could show an error screen here instead of crashing
+  }
 }
 
 class RunningApp extends StatelessWidget {
   const RunningApp({super.key});
+
+  ThemeData _buildTheme(Brightness brightness) {
+    return ThemeData(
+      brightness: brightness,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.blue,
+        primary: Colors.blue,
+        secondary: Colors.orange,
+        tertiary: Colors.green,
+        brightness: brightness,
+        surface:
+            brightness == Brightness.light ? Colors.white : Colors.grey[900],
+      ),
+      fontFamily: 'Montserrat',
+      useMaterial3: true,
+      // Add consistent text styles
+      textTheme: const TextTheme(
+        headlineMedium: TextStyle(fontWeight: FontWeight.bold),
+        titleLarge: TextStyle(fontWeight: FontWeight.w600),
+        bodyLarge: TextStyle(fontSize: 16),
+      ),
+      // Add card theme
+      cardTheme: CardTheme(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,32 +60,10 @@ class RunningApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'Chase Runner',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          brightness: Brightness.light,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            primary: Colors.blue,
-            secondary: Colors.orange,
-            tertiary: Colors.green,
-            surface: Colors.white,
-          ),
-          fontFamily: 'Montserrat',
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          brightness: Brightness.dark,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            primary: Colors.blue,
-            secondary: Colors.orange,
-            tertiary: Colors.green,
-            brightness: Brightness.dark,
-          ),
-          fontFamily: 'Montserrat',
-          useMaterial3: true,
-        ),
+        theme: _buildTheme(Brightness.light),
+        darkTheme: _buildTheme(Brightness.dark),
         themeMode: ThemeMode.system,
+        debugShowCheckedModeBanner: false, // Remove debug banner
         initialRoute: '/',
         routes: {
           '/': (context) => const HomeScreen(),

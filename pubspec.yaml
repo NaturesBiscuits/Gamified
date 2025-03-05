@@ -1,5 +1,5 @@
-name: chase_runner
-description: A gamified running tracker app with chase mechanics and AI coaching.
+name: gamified
+description: A gamified running app
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -34,7 +34,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   positioned_tap_detector_2: ^1.0.4
   # State management
-  provider: ^6.0.3
+  provider: ^6.0.0
 
   # Location and mapping
   geolocator: ^13.0.2
