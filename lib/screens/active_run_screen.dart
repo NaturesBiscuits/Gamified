@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 import '../providers/run_provider.dart';
 import '../widgets/run_metrics_panel.dart';
 import '../widgets/chase_visualization.dart';
@@ -18,11 +20,15 @@ class _ActiveRunScreenState extends State<ActiveRunScreen>
     with WidgetsBindingObserver {
   final MapController _mapController = MapController();
   bool _showMetrics = true;
+  Position? _currentPosition;
+  List<LatLng> _routePoints = [];
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initLocationTracking();
 
     // Start run if not already running
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -33,9 +39,107 @@ class _ActiveRunScreenState extends State<ActiveRunScreen>
     });
   }
 
+  Future<void> _initLocationTracking() async {
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location services are disabled.')),
+          );
+        }
+        return;
+      }
+
+      // Check for location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Location permissions are denied')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permissions are permanently denied'),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get initial position
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+
+        if (mounted) {
+          setState(() {
+            _currentPosition = position;
+            _routePoints.add(LatLng(position.latitude, position.longitude));
+          });
+        }
+      } catch (e) {
+        debugPrint('Error getting current position: $e');
+        return;
+      }
+
+      // Start listening to position updates
+      _positionStreamSubscription?.cancel(); // Cancel any existing subscription
+      _positionStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10, // Update every 10 meters
+        ),
+      ).listen(
+        (Position position) {
+          if (mounted) {
+            setState(() {
+              _currentPosition = position;
+              _routePoints.add(LatLng(position.latitude, position.longitude));
+            });
+
+            // Update the map view to follow the user
+            _mapController.move(
+              LatLng(position.latitude, position.longitude),
+              _mapController.zoom,
+            );
+          }
+        },
+        onError: (e) {
+          debugPrint('Error getting location updates: $e');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Location error: $e')),
+            );
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('Error in location tracking: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _positionStreamSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -54,6 +158,12 @@ class _ActiveRunScreenState extends State<ActiveRunScreen>
   @override
   Widget build(BuildContext context) {
     final runProvider = Provider.of<RunProvider>(context);
+
+    if (_currentPosition == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       body: Stack(
@@ -181,86 +291,56 @@ class _ActiveRunScreenState extends State<ActiveRunScreen>
     );
   }
 
-// For the _buildMap function:
   Widget _buildMap(RunProvider runProvider) {
-    // Default position (will be updated with actual location)
-    const defaultPosition = LatLng(37.7749, -122.4194); // San Francisco
-
-    return StreamBuilder<Position>(
-      stream: runProvider.locationStream as Stream<Position>?,
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          final position = snapshot.data!;
-          final latLng = LatLng(position.latitude, position.longitude);
-
-          // Center map on current position
-          _mapController.move(latLng, 17);
-
-          return FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: latLng,
-              initialZoom: 17,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.none,
-              ),
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        center: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        zoom: 16.0,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.example.app',
+        ),
+        PolylineLayer(
+          polylines: [
+            Polyline(
+              points: _routePoints,
+              color: Colors.blue,
+              strokeWidth: 4.0,
             ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c'],
-              ),
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: runProvider.currentRun?.route
-                            .map((p) => LatLng(p.latitude, p.longitude))
-                            .toList() ??
-                        [],
-                    color: Colors.blue,
-                    strokeWidth: 4.0,
-                  ),
-                ],
-              ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: latLng,
-                    width: 20,
-                    height: 20,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          );
-        } else {
-          return FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: defaultPosition,
-              initialZoom: 17,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c'],
-              ),
-            ],
-          );
-        }
-      },
+          ],
+        ),
+        // MarkerLayer(
+        //   markers: [
+        //     if (_currentPosition != null)
+        //       Marker(
+        //         point: LatLng(
+        //           _currentPosition!.latitude,
+        //           _currentPosition!.longitude,
+        //         ),
+        //         builder: (ctx) => Container(
+        //           width: 20,
+        //           height: 20,
+        //           decoration: BoxDecoration(
+        //             color: Colors.blue.withOpacity(0.7),
+        //             shape: BoxShape.circle,
+        //             border: Border.all(
+        //               color: Colors.white,
+        //               width: 2,
+        //             ),
+        //           ),
+        //           child: const Icon(
+        //             Icons.location_on,
+        //             color: Colors.red,
+        //             size: 20,
+        //           ),
+        //         ),
+        //       ),
+        //   ],
+        // ),
+      ],
     );
   }
 
@@ -272,7 +352,6 @@ class _ActiveRunScreenState extends State<ActiveRunScreen>
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            // ignore: deprecated_member_use
             Colors.black.withOpacity(0.7),
             Colors.transparent,
           ],
@@ -333,19 +412,4 @@ class _ActiveRunScreenState extends State<ActiveRunScreen>
       ),
     );
   }
-}
-
-// Mock Position class for the example
-class Position {
-  final double latitude;
-  final double longitude;
-  final double altitude;
-  final double speed;
-
-  Position({
-    required this.latitude,
-    required this.longitude,
-    required this.altitude,
-    required this.speed,
-  });
 }

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/run_data.dart';
 import '../models/chaser.dart';
 import '../models/power_up.dart';
@@ -12,11 +13,11 @@ class RunProvider with ChangeNotifier {
   bool _isRunning = false;
   bool _isPaused = false;
   DateTime? _startTime;
-  DateTime? _endTime;
   List<Position> _positions = [];
   List<RunData> _pastRuns = [];
   RunData? _currentRun;
   RunData? _ghostRun;
+  List<LatLng> _route = [];
 
   // Chase mechanics
   Chaser _chaser = Chaser.defaultChaser();
@@ -58,6 +59,7 @@ class RunProvider with ChangeNotifier {
   List<RunData> get pastRuns => _pastRuns;
   RunData? get currentRun => _currentRun;
   RunData? get ghostRun => _ghostRun;
+  List<LatLng> get route => _route;
 
   // Change the return type to Stream<Position>
   Stream<Position> get locationStream => _locationController.stream;
@@ -127,6 +129,7 @@ class RunProvider with ChangeNotifier {
     _currentSpeed = 0.0;
     _averageSpeed = 0.0;
     _duration = Duration.zero;
+    _route = [];
 
     // Set up chaser
     if (customChaser != null) {
@@ -189,7 +192,6 @@ class RunProvider with ChangeNotifier {
 
     _isRunning = false;
     _isPaused = false;
-    _endTime = DateTime.now();
     _positionStreamSubscription?.cancel();
 
     // Finalize current run data
@@ -207,6 +209,11 @@ class RunProvider with ChangeNotifier {
     }
 
     speak("Run completed. Great job!");
+    notifyListeners();
+  }
+
+  void addRoutePoint(LatLng point) {
+    _route.add(point);
     notifyListeners();
   }
 
